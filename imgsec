@@ -1,0 +1,91 @@
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
+from Crypto.Protocol.KDF import PBKDF2
+import os
+
+# Function to derive a key from a password
+def derive_key(password, salt):
+    # Use PBKDF2 to derive a 32-byte key (AES-256)
+    key = PBKDF2(password, salt, dkLen=32, count=100000)
+    return key
+
+# Function to encrypt an image
+def encrypt_image(image_path, password, output_path):
+    # Read the image file
+    with open(image_path, 'rb') as image_file:
+        image_data = image_file.read()
+
+    # Generate a random salt and initialization vector (IV)
+    salt = get_random_bytes(16)
+    iv = get_random_bytes(AES.block_size)
+
+    # Derive the key from the password
+    key = derive_key(password, salt)
+
+    # Create a cipher object using the key and IV
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    # Encrypt the image data
+    encrypted_data = cipher.encrypt(pad(image_data, AES.block_size))
+
+    # Combine the salt, IV, and encrypted data
+    encrypted_data_with_metadata = salt + iv + encrypted_data
+
+    # Write the encrypted data to the output file
+    with open(output_path, 'wb') as encrypted_file:
+        encrypted_file.write(encrypted_data_with_metadata)
+
+    print(f"Image encrypted and saved to {output_path}")
+
+# Function to decrypt an image
+def decrypt_image(encrypted_image_path, password, output_path):
+    # Read the encrypted image file
+    with open(encrypted_image_path, 'rb') as encrypted_file:
+        encrypted_data_with_metadata = encrypted_file.read()
+
+    # Extract the salt, IV, and encrypted data
+    salt = encrypted_data_with_metadata[:16]
+    iv = encrypted_data_with_metadata[16:16 + AES.block_size]
+    encrypted_data = encrypted_data_with_metadata[16 + AES.block_size:]
+
+    # Derive the key from the password
+    key = derive_key(password, salt)
+
+    # Create a cipher object using the key and IV
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    # Decrypt the image data
+    try:
+        decrypted_data = unpad(cipher.decrypt(encrypted_data), AES.block_size)
+    except ValueError:
+        print("Incorrect password or corrupted data. Decryption failed.")
+        return
+
+    # Write the decrypted data to the output file
+    with open(output_path, 'wb') as decrypted_file:
+        decrypted_file.write(decrypted_data)
+
+    print(f"Image decrypted and saved to {output_path}")
+
+# Main function
+if __name__ == "__main__":
+    # Ask the user whether to encrypt or decrypt
+    action = input("Do you want to encrypt or decrypt? (e/d): ").strip().lower()
+
+    if action == 'e':
+        # Encrypt an image
+        image_path = input("Enter the path to the image file: ").strip()
+        password = input("Enter a password for encryption: ").strip()
+        output_path = os.path.splitext(image_path)[0] + "_encrypted.jpg"
+        encrypt_image(image_path, password, output_path)
+
+    elif action == 'd':
+        # Decrypt an image
+        encrypted_image_path = input("Enter the path to the encrypted image file: ").strip()
+        password = input("Enter the password for decryption: ").strip()
+        output_path = os.path.splitext(encrypted_image_path)[0] + "_decrypted.jpg"
+        decrypt_image(encrypted_image_path, password, output_path)
+
+    else:
+        print("Invalid choice. Please enter 'e' for encrypt or 'd' for decrypt.")
